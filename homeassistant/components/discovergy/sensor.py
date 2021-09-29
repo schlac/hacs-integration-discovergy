@@ -65,9 +65,13 @@ async def async_setup_entry(
             await coordinator.async_config_entry_first_refresh()
 
             for value, description in ELECTRICITY_SENSORS.items():
-                entities.append(
-                    DiscovergyElectricitySensor(value, description, meter, coordinator)
-                )
+                # check if this meter has this data, then add this sensor
+                if coordinator.data.values[value]:
+                    entities.append(
+                        DiscovergyElectricitySensor(
+                            value, description, meter, coordinator
+                        )
+                    )
 
     async_add_entities(entities, False)
 
@@ -81,7 +85,7 @@ class DiscovergyElectricitySensor(CoordinatorEntity, SensorEntity):
         description: SensorEntityDescription,
         meter: Meter,
         coordinator: DataUpdateCoordinator,
-    ):
+    ) -> None:
         """Initialize the sensor."""
         self._value = value
         self._meter = meter
@@ -89,7 +93,7 @@ class DiscovergyElectricitySensor(CoordinatorEntity, SensorEntity):
 
         self.entity_description = description
         self._attr_name = (
-            f"{self._meter.measurement_type} "
+            f"{self._meter.measurement_type.capitalize()} "
             f"{self._meter.location.street} "
             f"{self._meter.location.street_number} - "
             f"{self.entity_description.name}"
@@ -100,7 +104,7 @@ class DiscovergyElectricitySensor(CoordinatorEntity, SensorEntity):
         self._attr_device_info = {
             ATTR_IDENTIFIERS: {(DOMAIN, self._meter.get_meter_id())},
             ATTR_NAME: self.device_name,
-            ATTR_MODEL: f"{self._meter.type} {self._meter.measurement_type}",
+            ATTR_MODEL: f"{self._meter.type.capitalize()} {self._meter.measurement_type.capitalize()}",
             ATTR_MANUFACTURER: MANUFACTURER,
         }
 
@@ -109,7 +113,7 @@ class DiscovergyElectricitySensor(CoordinatorEntity, SensorEntity):
         """Return the name of the actual physical meter."""
         return (
             f"{self._meter.type} ",
-            f"{self._meter.measurement_type} ",
+            f"{self._meter.measurement_type.capitalize()} ",
             f"{self._meter.location.street} " f"{self._meter.location.street_number}",
         )
 
@@ -117,7 +121,7 @@ class DiscovergyElectricitySensor(CoordinatorEntity, SensorEntity):
     def state(self) -> StateType:
         """Return the sensor state."""
         if self.coordinator.data:
-            if self._value == "energy":
+            if self._value == "energy" or self._value == "energyOut":
                 return self.coordinator.data.values[self._value] / 10000000000
             else:
                 return self.coordinator.data.values[self._value] / 1000
