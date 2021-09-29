@@ -4,12 +4,8 @@
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/discovergy",
   "requirements": [
-    "pydiscovergy==0.1.0"
+    "pydiscovergy==1.0.2"
   ],
-  "ssdp": [],
-  "zeroconf": [],
-  "homekit": {},
-  "dependencies": [],
   "codeowners": [
     "@jpbede"
   ],
