@@ -26,7 +26,7 @@ from homeassistant.helpers.update_coordinator import (
 
 from .const import DOMAIN, ELECTRICITY_SENSORS, MANUFACTURER, MIN_TIME_BETWEEN_UPDATES
 
-PARALLEL_UPDATES = 0
+PARALLEL_UPDATES = 1
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -90,7 +90,7 @@ async def async_setup_entry(
 
                 for description in ELECTRICITY_SENSORS:
                     # check if this meter has this data, then add this sensor
-                    if coordinator.data.values[description.key]:
+                    if description.key in coordinator.data.values:
                         entities.append(
                             DiscovergyElectricitySensor(description, meter, coordinator)
                         )
@@ -110,9 +110,6 @@ class DiscovergyElectricitySensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
 
-        self._meter = meter
-        self.coordinator = coordinator
-
         self.entity_description = description
         self._attr_name = (
             f"{meter.measurement_type.capitalize()} "
@@ -120,22 +117,13 @@ class DiscovergyElectricitySensor(CoordinatorEntity, SensorEntity):
             f"{meter.location.street_number} - "
             f"{description.name}"
         )
-        self._attr_unique_id = f"{meter.serial_number}-" f"{description.key}"
+        self._attr_unique_id = f"{meter.full_serial_number}-{description.key}"
         self._attr_device_info = {
             ATTR_IDENTIFIERS: {(DOMAIN, meter.get_meter_id())},
-            ATTR_NAME: self.device_name,
-            ATTR_MODEL: f"{meter.type.capitalize()} {meter.measurement_type.capitalize()}",
+            ATTR_NAME: f"{meter.measurement_type.capitalize()} {meter.location.street} {meter.location.street_number}",
+            ATTR_MODEL: f"{meter.type} {meter.full_serial_number}",
             ATTR_MANUFACTURER: MANUFACTURER,
         }
-
-    @property
-    def device_name(self):
-        """Return the name of the actual physical meter."""
-        return (
-            f"{self._meter.type} ",
-            f"{self._meter.measurement_type.capitalize()} ",
-            f"{self._meter.location.street} " f"{self._meter.location.street_number}",
-        )
 
     @property
     def native_value(self) -> StateType:
