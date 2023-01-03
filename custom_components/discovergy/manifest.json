@@ -3,14 +3,13 @@
   "name": "Discovergy",
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/discovergy",
-  "requirements": [
-    "pydiscovergy==1.1.2"
-  ],
+  "requirements": ["pydiscovergy==1.2.1"],
   "codeowners": [
     "@schlac",
     "@jpbede"
   ],
   "issue_tracker": "https://github.com/schlac/hacs-integration-discovergy/issues",
   "iot_class": "cloud_polling",
-  "version": "0.0.1"
+  "integration_type": "hub",
+  "version": "0.4.2"
 }

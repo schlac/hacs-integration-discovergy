@@ -2,9 +2,11 @@ name: HACS Action
 
 on:
   push:
+    branches:
+      - main
   pull_request:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "1 1 1 * *"
 
 jobs:
   hacs:
@@ -16,4 +18,4 @@ jobs:
         uses: "hacs/action@main"
         with:
           category: "integration"
-          ignore: "brands requirements wheels"
+          ignore: "brands"

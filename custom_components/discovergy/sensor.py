@@ -1,43 +1,162 @@
 """Discovergy sensor entity."""
+from dataclasses import dataclass, field
+from datetime import timedelta
 import logging
 
 from pydiscovergy import Discovergy
 from pydiscovergy.error import AccessTokenExpired, HTTPError
 from pydiscovergy.models import Meter
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_IDENTIFIERS,
     ATTR_MANUFACTURER,
     ATTR_MODEL,
     ATTR_NAME,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import (
-    ConfigEntryAuthFailed,
     CoordinatorEntity,
     DataUpdateCoordinator,
     UpdateFailed,
 )
 
+from . import DiscovergyData
 from .const import (
+    CONF_PRECISION,
+    CONF_TIME_BETWEEN_UPDATE,
+    DEFAULT_PRECISION,
+    DEFAULT_TIME_BETWEEN_UPDATE,
     DOMAIN,
-    ELECTRICITY_SENSORS,
-    GAS_SENSORS,
     MANUFACTURER,
-    MIN_TIME_BETWEEN_UPDATES,
 )
 
 PARALLEL_UPDATES = 1
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass
+class DiscovergyMixin:
+    """Mixin for alternative keys."""
+
+    alternative_keys: list = field(default_factory=lambda: [])
+    scale: int = field(default_factory=lambda: 1000)
+
+
+@dataclass
+class DiscovergySensorEntityDescription(DiscovergyMixin, SensorEntityDescription):
+    """Define Sensor entity description class."""
+
+
+GAS_SENSORS: tuple[DiscovergySensorEntityDescription, ...] = (
+    DiscovergySensorEntityDescription(
+        key="volume",
+        name="Total consumption",
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        device_class=SensorDeviceClass.GAS,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+)
+
+ELECTRICITY_SENSORS: tuple[DiscovergySensorEntityDescription, ...] = (
+    # power sensors
+    DiscovergySensorEntityDescription(
+        key="power",
+        name="Total power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    DiscovergySensorEntityDescription(
+        key="power1",
+        name="Phase 1 power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        alternative_keys=["phase1Power"],
+    ),
+    DiscovergySensorEntityDescription(
+        key="power2",
+        name="Phase 2 power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        alternative_keys=["phase2Power"],
+    ),
+    DiscovergySensorEntityDescription(
+        key="power3",
+        name="Phase 3 power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        alternative_keys=["phase3Power"],
+    ),
+    # voltage sensors
+    DiscovergySensorEntityDescription(
+        key="phase1Voltage",
+        name="Phase 1 voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    DiscovergySensorEntityDescription(
+        key="phase2Voltage",
+        name="Phase 2 voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    DiscovergySensorEntityDescription(
+        key="phase3Voltage",
+        name="Phase 3 voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+    ),
+    # energy sensors
+    DiscovergySensorEntityDescription(
+        key="energy",
+        name="Total consumption",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        scale=10000000000,
+    ),
+    DiscovergySensorEntityDescription(
+        key="energyOut",
+        name="Total production",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        scale=10000000000,
+    ),
+)
+
+
 def get_coordinator_for_meter(
-    hass: HomeAssistant, meter: Meter, discovergy_instance: Discovergy
+    hass: HomeAssistant,
+    meter: Meter,
+    discovergy_instance: Discovergy,
+    update_interval: timedelta,
 ) -> DataUpdateCoordinator:
     """Create a new DataUpdateCoordinator for given meter."""
 
@@ -61,7 +180,7 @@ def get_coordinator_for_meter(
         _LOGGER,
         name="sensor",
         update_method=async_update_data,
-        update_interval=MIN_TIME_BETWEEN_UPDATES,
+        update_interval=update_interval,
     )
     return coordinator
 
@@ -70,63 +189,74 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the Discovergy sensors."""
-    try:
-        discovergy_instance = hass.data[DOMAIN][entry.entry_id]
-        meters = await discovergy_instance.get_meters()
-    except AccessTokenExpired as err:
-        _LOGGER.debug("Token expired while communicating with API: %s", err)
-        entry.async_start_reauth(hass)
-    except HTTPError as err:
-        raise ConfigEntryNotReady(f"Error communicating with API: {err}") from err
-    except Exception as err:  # pylint: disable=broad-except
-        raise ConfigEntryNotReady(
-            f"Unexpected error while communicating with API: {err}"
-        ) from err
-    else:
-        entities = []
-        for meter in meters:
-            # Get coordinator for meter, set config entry and fetch initial data
-            # so we have data when entities are added
-            coordinator = get_coordinator_for_meter(hass, meter, discovergy_instance)
-            coordinator.config_entry = entry
-            await coordinator.async_config_entry_first_refresh()
+    data: DiscovergyData = hass.data[DOMAIN][entry.entry_id]
+    discovergy_instance: Discovergy = data.api_client
+    meters: list[Meter] = data.meters  # always returns a list
 
-            SENSORS = None
-            if meter.measurement_type == "ELECTRICITY":
-                SENSORS = ELECTRICITY_SENSORS
-            elif meter.measurement_type == "GAS":
-                SENSORS = GAS_SENSORS
+    min_time_between_updates = timedelta(
+        seconds=entry.options.get(CONF_TIME_BETWEEN_UPDATE, DEFAULT_TIME_BETWEEN_UPDATE)
+    )
+    precision = entry.options.get(CONF_PRECISION, DEFAULT_PRECISION)
 
-            if SENSORS is not None:
-                for description in SENSORS:
-                    # check if this meter has this data, then add this sensor
-                    if description.key in coordinator.data.values:
+    entities = []
+    for meter in meters:
+        # Get coordinator for meter, set config entry and fetch initial data
+        # so we have data when entities are added
+        coordinator = get_coordinator_for_meter(
+            hass, meter, discovergy_instance, min_time_between_updates
+        )
+        coordinator.config_entry = entry
+        await coordinator.async_config_entry_first_refresh()
+
+        # add coordinator to data for diagnostics
+        data.coordinators[meter.get_meter_id()] = coordinator
+
+        sensors = None
+        if meter.measurement_type == "ELECTRICITY":
+            sensors = ELECTRICITY_SENSORS
+        elif meter.measurement_type == "GAS":
+            sensors = GAS_SENSORS
+
+        if sensors is not None:
+            for description in sensors:
+                keys = [description.key] + description.alternative_keys
+
+                # check if this meter has this data, then add this sensor
+                for key in keys:
+                    if key in coordinator.data.values:
                         entities.append(
-                            DiscovergySensor(description, meter, coordinator)
+                            DiscovergySensor(
+                                key, description, meter, coordinator, precision
+                            )
                         )
 
-        async_add_entities(entities, False)
+    async_add_entities(entities, False)
 
 
 class DiscovergySensor(CoordinatorEntity, SensorEntity):
     """Represents a discovergy smart meter sensor."""
 
+    entity_description: DiscovergySensorEntityDescription
+    data_key: str
+    precision: int
+    _attr_has_entity_name = True
+
     def __init__(
         self,
-        description: SensorEntityDescription,
+        data_key: str,
+        description: DiscovergySensorEntityDescription,
         meter: Meter,
         coordinator: DataUpdateCoordinator,
+        precision: int,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
 
+        self.data_key = data_key
+        self.precision = precision
+
         self.entity_description = description
-        self._attr_name = (
-            f"{meter.measurement_type.capitalize()} "
-            f"{meter.location.street} "
-            f"{meter.location.street_number} - "
-            f"{description.name}"
-        )
+        self._attr_name = f"{description.name}"
         self._attr_unique_id = f"{meter.full_serial_number}-{description.key}"
         self._attr_device_info = {
             ATTR_IDENTIFIERS: {(DOMAIN, meter.get_meter_id())},
@@ -138,16 +268,7 @@ class DiscovergySensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the sensor state."""
-        if self.coordinator.data:
-            if (
-                self.entity_description.key == "energy"
-                or self.entity_description.key == "energyOut"
-            ):
-                return (
-                    self.coordinator.data.values[self.entity_description.key]
-                    / 10000000000
-                )
-
-            return self.coordinator.data.values[self.entity_description.key] / 1000
-
-        return None
+        return round(
+            self.coordinator.data.values[self.data_key] / self.entity_description.scale,
+            self.precision,
+        )

@@ -1,2 +1,5 @@
+# Home Assistant Core, full dependency set
+homeassistant
+
 # homeassistant.components.discovergy
-pydiscovergy==1.1.2
+pydiscovergy==1.2.1
