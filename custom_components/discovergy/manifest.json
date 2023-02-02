@@ -11,5 +11,5 @@
   "issue_tracker": "https://github.com/schlac/hacs-integration-discovergy/issues",
   "iot_class": "cloud_polling",
   "integration_type": "hub",
-  "version": "0.4.2"
+  "version": "0.4.3"
 }
