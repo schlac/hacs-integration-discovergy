@@ -6,8 +6,11 @@
 
 ![Project Maintenance][maintenance-shield]
 
-Based on https://github.com/home-assistant/core/pull/54280 (not yet fully upstreamed Discovergy integration).
-Please have a look and show your interest if you want this integrated into homeassistant releases.
+~Based on https://github.com/home-assistant/core/pull/54280 (not yet fully upstreamed Discovergy integration).~
+~Please have a look and show your interest if you want this integrated into homeassistant releases.~
+
+The integration has been officially integrated with [Home Assistant 2023.07](https://www.home-assistant.io/blog/2023/07/05/release-20237/) 🎉 and can now be added without HACS.
+For more information see the integration page https://www.home-assistant.io/integrations/discovergy/.
 
 This as custom HACS repo.
 Please see https://hacs.xyz/docs/faq/custom_repositories for installation instructions.
